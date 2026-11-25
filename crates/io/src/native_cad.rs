@@ -1,29 +1,17 @@
-//! Other CAD formats read through [cadmpeg](https://github.com/cadmpeg/cadmpeg): FreeCAD
-//! `.FCStd` files are read, and Rhino `.3dm` and OpenUSD files read and written
-//! ([`usd`], [`cadmpeg_export`]); STEP and IGES files are read when the cadmpeg reader is
-//! chosen ([`cadmpeg_step_records`], [`cadmpeg_iges_records`]) and written through it. cadmpeg decodes the file into its neutral model (CADIR). By default
-//! cadmpeg's STEP writer restates that as STEP, which the Import feature then reads and keeps like
-//! any STEP file ([`native_cad_to_step`]); with [`crate::StepReader::Cadmpeg`] (the Preferences
-//! switch "Import with cadmpeg", off by default) the model is read straight into B-rep records
-//! ([`cadir_records`]) and the Import feature keeps those records, with no STEP text in between.
+//! Other CAD formats read through [cadmpeg](https://github.com/cadmpeg/cadmpeg): FreeCAD,
+//! Rhino, Autodesk Inventor, SolidWorks and CATIA files are decoded through CADIR. STEP remains
+//! on SolidCore's native reader by default; IGES can use the cadmpeg reader. Native formats can
+//! be read as CADIR-backed B-rep records with [`native_cad_records`] or restated as STEP
+//! through [`native_cad_to_step`].
 //!
-//! Only codecs for open formats are compiled in (the workspace enables cadmpeg-registry's
-//! `fcstd`, `iges`, `rhino`, `step` and `usd` features alone). cadmpeg's codecs for commercial formats, and its
-//! `sat` codec (a ShapeManager stream decoder that reads ACIS as one dialect), are not built.
-//!
-//! This module is the cadmpeg seam: the one place cadmpeg is called, returning the STEP text, the
-//! records or the exported bytes plus warnings; an export writes the design into cadmpeg's model
-//! directly (`cadir_out`) and cadmpeg's writer writes the file (`export`). A cadmpeg-based STEP reader could be added here later and chosen by a setting, to
-//! compare with our own STEP reader, without changing that reader.
+//! The codecs are enabled explicitly in the workspace dependency configuration. This keeps the
+//! supported native-format set intentional rather than silently compiling every cadmpeg codec.
+//! CADIR assembly structure, placements and body names are retained by the record conversion path.
 
 /// File extensions read through cadmpeg (lower case).
-pub const NATIVE_CAD_EXTS: [&str; 2] = ["fcstd", "3dm"];
+pub const NATIVE_CAD_EXTS: [&str; 8] = ["fcstd", "3dm", "ipt", "iam", "sldprt", "sldasm", "catpart", "catproduct"];
 
-/// Is this a FreeCAD or Rhino file name (any case)?
-pub fn is_native_cad_path(path: &str) -> bool {
-    std::path::Path::new(path).extension().and_then(|e| e.to_str()).is_some_and(|e| NATIVE_CAD_EXTS.iter().any(|x| e.eq_ignore_ascii_case(x)))
-}
-
+/// Is a supported native CAD file name (any case)?
 /// Is this a FreeCAD file name (any case)?
 pub fn is_freecad_path(path: &str) -> bool {
     std::path::Path::new(path).extension().and_then(|e| e.to_str()).is_some_and(|e| e.eq_ignore_ascii_case("fcstd"))
@@ -695,7 +683,7 @@ mod convert {
     use cadmpeg_registry::{DETECTION_PREFIX_LEN, InputCatalog, ResolveSourceError, ResolvedSource, forced_input};
 
     /// The codecs we accept (cadmpeg codec ids), whatever else the registry recognises.
-    const ACCEPTED: [&str; 2] = ["fcstd", "rhino"];
+    const ACCEPTED: [&str; 5] = ["fcstd", "rhino", "inventor", "sldprt", "catia"];
 
     pub(super) mod step_route;
 
@@ -885,9 +873,17 @@ mod convert {
     pub(super) fn records(name: &str, bytes: &[u8]) -> Result<super::RecordsRead, String> {
         let ext = name.rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase()).unwrap_or_default();
         if !super::NATIVE_CAD_EXTS.contains(&ext.as_str()) {
-            return Err(format!("{name}: not supported (FreeCAD .FCStd and Rhino .3dm only)"));
+            return Err(format!(
+                "{name}: unsupported native CAD extension; supported: .FCStd, .3dm, .ipt, .iam, .sldprt, .sldasm, .CATPart, .CATProduct"
+            ));
         }
-        records_of(name, &ext, bytes, &ACCEPTED)
+        let codec = match ext.as_str() {
+            "ipt" | "iam" => "inventor",
+            "sldprt" | "sldasm" => "sldprt",
+            "catpart" | "catproduct" => "catia",
+            other => other,
+        };
+        records_of(name, &ext, bytes, &[codec])
     }
 
     /// A STEP file (`name`) read by cadmpeg's STEP decoder into an import kept as records.
