@@ -85,10 +85,10 @@ type Original = Arc<dyn std::any::Any + Send + Sync>;
 
 fn delegate(original: &Original) -> Option<&dyn CallbackTrait> {
     let callback = original.downcast_ref::<egui_wgpu::Callback>()?;
-    if let Some(tile) = callback.downcast_ref::<crate::TileCallback>() {
+    if let Some(tile) = callback.callback.downcast_ref::<crate::TileCallback>() {
         Some(tile)
     } else {
-        callback.downcast_ref::<crate::ProductHighlightCallback>().map(|callback| callback as &dyn CallbackTrait)
+        callback.callback.downcast_ref::<crate::ProductHighlightCallback>().map(|callback| callback as &dyn CallbackTrait)
     }
 }
 
