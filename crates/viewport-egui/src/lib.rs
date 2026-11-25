@@ -10,6 +10,7 @@ mod rounded;
 pub use rounded::clip_card;
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use solidcraft_viewport_gpu::view::{DrawStatsHandle, Frame, GpuTarget, Renderer};
 
@@ -18,9 +19,21 @@ pub struct ViewportCallback(pub Frame);
 /// A frame of one of several views drawn in the same window (tiles): the view `.0` keeps its own
 /// picture on the GPU, so the tiles of one egui frame do not draw over each other
 /// ([`Renderer::prepare_view`]).
-pub struct TileCallback(pub u64, pub Frame);
+pub struct TileCallback(pub u64, pub Frame, Arc<AtomicBool>);
+
+impl TileCallback {
+    pub fn new(slot: u64, frame: Frame) -> Self {
+        Self(slot, frame, Arc::new(AtomicBool::new(false)))
+    }
+}
 /// A transparent, depth-correct selection/hover layer over live product pixels.
-pub struct ProductHighlightCallback(pub Frame, pub Option<u64>);
+pub struct ProductHighlightCallback(pub Frame, pub Option<u64>, Arc<AtomicBool>);
+
+impl ProductHighlightCallback {
+    pub fn new(frame: Frame, tile: Option<u64>) -> Self {
+        Self(frame, tile, Arc::new(AtomicBool::new(false)))
+    }
+}
 
 /// The view's background: a vertical gradient from `top` at the top edge to `bottom` at the
 /// bottom edge. The viewport callback composites transparently onto this egui mesh, so the host
@@ -170,6 +183,9 @@ impl egui_wgpu::CallbackTrait for TileCallback {
         _encoder: &mut wgpu::CommandEncoder,
         resources: &mut egui_wgpu::CallbackResources,
     ) -> Vec<wgpu::CommandBuffer> {
+        if self.2.swap(true, Ordering::Relaxed) {
+            return Vec::new();
+        }
         if let Some(res) = resources.get_mut::<Renderer>() {
             res.prepare_view(self.0, device, queue, &self.1);
         }
@@ -192,6 +208,9 @@ impl egui_wgpu::CallbackTrait for ProductHighlightCallback {
         encoder: &mut wgpu::CommandEncoder,
         resources: &mut egui_wgpu::CallbackResources,
     ) -> Vec<wgpu::CommandBuffer> {
+        if self.2.swap(true, Ordering::Relaxed) {
+            return Vec::new();
+        }
         if let Some(renderer) = resources.get_mut::<Renderer>() {
             if let Some(tile) = self.1 {
                 renderer.prepare_product_highlights_view(tile, device, queue, &self.0);
@@ -249,6 +268,50 @@ mod tests {
                     assert!(clips.last().unwrap().left() > card.left(), "the bottom corner contains no card pixels");
                 }
             }
+        }
+    }
+
+    struct NoopCallback;
+
+    impl egui_wgpu::CallbackTrait for NoopCallback {
+        fn paint(
+            &self,
+            _info: egui::PaintCallbackInfo,
+            _pass: &mut wgpu::RenderPass<'static>,
+            _resources: &egui_wgpu::CallbackResources,
+        ) {
+        }
+    }
+
+    #[test]
+    fn rounded_card_splits_gpu_callback_clips_without_replacing_the_callback() {
+        use std::sync::Arc;
+
+        let ctx = egui::Context::default();
+        let card = Rect::from_min_size(pos2(12.3, 18.7), vec2(240.0, 160.0));
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            let painter = ui.ctx().layer_painter(egui::LayerId::background());
+            let start = painter.add(egui::Shape::Noop);
+            painter.add(egui_wgpu::Callback::new_paint_callback(card, NoopCallback).into());
+            super::clip_card(&painter, start, card, egui::CornerRadius::same(8));
+        });
+        output.textures_delta.clear();
+
+        let callbacks: Vec<_> = output
+            .shapes
+            .iter()
+            .filter_map(|entry| match &entry.shape {
+                egui::Shape::Callback(callback) => Some((entry.clip_rect, callback.rect, callback.callback.clone())),
+                _ => None,
+            })
+            .collect();
+        assert!(callbacks.len() > 1, "rounded corners should split the GPU callback into clip bands");
+        assert!(callbacks.len() <= 35, "only corner rows need separate callback clips");
+        assert!(callbacks.iter().all(|(_, rect, _)| *rect == card));
+        let original = &callbacks[0].2;
+        assert!(callbacks.iter().all(|(_, _, callback)| Arc::ptr_eq(original, callback)));
+        for pair in callbacks.windows(2) {
+            assert_eq!(pair[0].0.bottom(), pair[1].0.top(), "callback clips must have no gaps or overlaps");
         }
     }
 

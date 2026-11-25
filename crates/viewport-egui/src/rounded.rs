@@ -3,7 +3,6 @@
 use std::sync::Arc;
 
 use egui::{CornerRadius, Painter, Rect, Shape, layers::ShapeIdx, pos2};
-use egui_wgpu::CallbackTrait;
 
 /// Clip the shapes painted since `start` to the same rounded boundary as the card's chrome.
 /// Horizontal bands follow physical pixel rows, keeping adjacent scissor rectangles seamless.
@@ -15,11 +14,18 @@ pub fn clip_card(painter: &Painter, start: ShapeIdx, rect: Rect, radius: CornerR
         let shapes: Vec<_> = list.all_entries().skip(start.0).cloned().collect();
         for (offset, entry) in shapes.iter().enumerate() {
             list.reset_shape(ShapeIdx(start.0 + offset));
-            if let Shape::Callback(callback) = &entry.shape
-                && delegate(&callback.callback).is_some()
-            {
-                let rounded = RoundedCallback { original: callback.callback.clone(), bands: bands.clone() };
-                list.add(entry.clip_rect, egui_wgpu::Callback::new_paint_callback(callback.rect, rounded).into());
+            if let Shape::Callback(callback) = &entry.shape {
+                // Paint callbacks are opaque to this crate: egui-wgpu intentionally keeps its
+                // callback trait object private. Preserve the original callback and split only
+                // its clip rectangle; egui-wgpu applies that scissor before each paint call.
+                // Tile/highlight callbacks share a per-frame prepare gate, so these paint bands
+                // never repeat their GPU preparation work.
+                for band in bands.iter() {
+                    let clip = band.intersect(entry.clip_rect);
+                    if clip.is_positive() && clip.intersects(callback.rect) {
+                        list.add(clip, entry.shape.clone());
+                    }
+                }
                 continue;
             }
             let bounds = entry.shape.visual_bounding_rect();
@@ -79,63 +85,4 @@ fn bands(rect: Rect, radius: CornerRadius, scale: f32) -> Vec<Rect> {
         result.push(Rect::from_min_max(pos2(rect.left() + left, y), pos2(rect.right() - right, end)));
     }
     result
-}
-
-type Original = Arc<dyn std::any::Any + Send + Sync>;
-
-fn delegate(original: &Original) -> Option<&dyn CallbackTrait> {
-    let callback = original.downcast_ref::<egui_wgpu::Callback>()?;
-    if let Some(tile) = callback.callback.downcast_ref::<crate::TileCallback>() {
-        Some(tile)
-    } else {
-        callback.callback.downcast_ref::<crate::ProductHighlightCallback>().map(|callback| callback as &dyn CallbackTrait)
-    }
-}
-
-struct RoundedCallback {
-    original: Original,
-    bands: Arc<[Rect]>,
-}
-
-impl CallbackTrait for RoundedCallback {
-    fn prepare(
-        &self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        screen: &egui_wgpu::ScreenDescriptor,
-        encoder: &mut wgpu::CommandEncoder,
-        resources: &mut egui_wgpu::CallbackResources,
-    ) -> Vec<wgpu::CommandBuffer> {
-        delegate(&self.original).map(|callback| callback.prepare(device, queue, screen, encoder, resources)).unwrap_or_default()
-    }
-
-    fn finish_prepare(
-        &self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        encoder: &mut wgpu::CommandEncoder,
-        resources: &mut egui_wgpu::CallbackResources,
-    ) -> Vec<wgpu::CommandBuffer> {
-        delegate(&self.original).map(|callback| callback.finish_prepare(device, queue, encoder, resources)).unwrap_or_default()
-    }
-
-    fn paint(&self, info: egui::PaintCallbackInfo, pass: &mut wgpu::RenderPass<'static>, resources: &egui_wgpu::CallbackResources) {
-        let Some(callback) = delegate(&self.original) else { return };
-        for band in self.bands.iter() {
-            let clip_rect = info.clip_rect.intersect(*band);
-            if !clip_rect.is_positive() {
-                continue;
-            }
-            let clipped = egui::PaintCallbackInfo { clip_rect, ..info };
-            let pixels = clipped.clip_rect_in_pixels();
-            if pixels.width_px > 0 && pixels.height_px > 0 {
-                pass.set_scissor_rect(pixels.left_px as u32, pixels.top_px as u32, pixels.width_px as u32, pixels.height_px as u32);
-                callback.paint(clipped, pass, resources);
-            }
-        }
-        let pixels = info.clip_rect_in_pixels();
-        if pixels.width_px > 0 && pixels.height_px > 0 {
-            pass.set_scissor_rect(pixels.left_px as u32, pixels.top_px as u32, pixels.width_px as u32, pixels.height_px as u32);
-        }
-    }
 }

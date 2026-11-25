@@ -3953,10 +3953,10 @@ fn paint_product_kind(app: &mut SolveApp, ui: &mut egui::Ui, rect: egui::Rect, c
         };
         match (feedback, app.viewport.scene_slot()) {
             (true, tile) => {
-                ui.painter().add(egui_wgpu::Callback::new_paint_callback(rect, solidcraft_viewport_egui::ProductHighlightCallback(frame, tile)));
+                ui.painter().add(egui_wgpu::Callback::new_paint_callback(rect, solidcraft_viewport_egui::ProductHighlightCallback::new(frame, tile)));
             }
             (false, Some(slot)) => {
-                ui.painter().add(egui_wgpu::Callback::new_paint_callback(rect, solidcraft_viewport_egui::TileCallback(slot, frame)));
+                ui.painter().add(egui_wgpu::Callback::new_paint_callback(rect, solidcraft_viewport_egui::TileCallback::new(slot, frame)));
             }
             (false, None) => {
                 ui.painter().add(egui_wgpu::Callback::new_paint_callback(rect, ViewportCallback(frame)));
