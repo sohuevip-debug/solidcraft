@@ -1,15 +1,16 @@
-//! Other CAD formats read through [cadmpeg](https://github.com/cadmpeg/cadmpeg): FreeCAD,
-//! Rhino, Autodesk Inventor, SolidWorks and CATIA files are decoded through CADIR. STEP remains
-//! on SolidCore's native reader by default; IGES can use the cadmpeg reader. Native formats can
-//! be read as CADIR-backed B-rep records with [`native_cad_records`] or restated as STEP
-//! through [`native_cad_to_step`].
+//! The supported vendor-native CAD formats read through
+//! [cadmpeg](https://github.com/cadmpeg/cadmpeg) are Autodesk Inventor (IPT/IAM),
+//! SolidWorks (SLDPRT/SLDASM), and CATIA V5 (CATPart). STEP and IGES exchange files
+//! remain on SolidCore's native import paths; they are not part of this vendor-native list.
+//! Native formats can be read as CADIR-backed B-rep records with [`native_cad_records`]
+//! or restated as STEP through [`native_cad_to_step`].
 //!
 //! The codecs are enabled explicitly in the workspace dependency configuration. This keeps the
 //! supported native-format set intentional rather than silently compiling every cadmpeg codec.
 //! CADIR assembly structure, placements and body names are retained by the record conversion path.
 
 /// File extensions read through cadmpeg (lower case).
-pub const NATIVE_CAD_EXTS: [&str; 7] = ["fcstd", "3dm", "ipt", "iam", "sldprt", "sldasm", "catpart"];
+pub const NATIVE_CAD_EXTS: [&str; 5] = ["ipt", "iam", "sldprt", "sldasm", "catpart"];
 
 /// Is a supported native CAD file name (any case)?
 /// Is this a FreeCAD file name (any case)?
@@ -111,7 +112,7 @@ fn next_end_section(text: &str, from: usize) -> Option<usize> {
     None
 }
 
-/// Read a FreeCAD or Rhino file (`file` is its name) into an import kept as B-rep records,
+/// Read an enabled vendor-native CAD file (`file` is its name) into an import kept as B-rep records,
 /// with what cadmpeg could not bring over, and whether its contents are a FreeCAD design. Panics
 /// inside cadmpeg or the reader become errors.
 pub fn native_cad_records(bytes: &[u8], file: &str) -> Result<RecordsRead, String> {
