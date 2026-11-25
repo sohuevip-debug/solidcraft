@@ -49,7 +49,7 @@ pub struct ImportSpec {
     /// Options offered at import time; each `param` is a parameter of `doc.open` and of the
     /// matching `file.insert_*` command.
     pub options: &'static [OptionSpec],
-    /// Read through cadmpeg (Inventor, SolidWorks, CATIA V5). Every current host builds it;
+    /// Read through cadmpeg (FreeCAD, Rhino, Inventor, SolidWorks, CATIA). Every current host builds it;
     /// `native = false` leaves these rows out for a host that cannot.
     pub native_only: bool,
 }
@@ -121,7 +121,7 @@ pub struct FormatSpec {
     pub export: Option<ExportSpec>,
 }
 
-/// Which way is up in a STEP or IGES file (see `doc.open`).
+/// Which way is up in a STEP, IGES, FreeCAD or Rhino file (see `doc.open`).
 const UP_Z: OptionSpec = OptionSpec {
     param: "up",
     label: "Up axis",
@@ -146,6 +146,16 @@ const STEP_NAMES: OptionSpec = OptionSpec {
 };
 
 const BREP_IMPORT: &[OptionSpec] = &[UP_Z, STEP_NAMES];
+
+/// What a FreeCAD file brings: its feature history rebuilt as features (sketches, Pad, Pocket,
+/// Revolution, Groove, Fillet, Chamfer, primitives), or only its solids (see `doc.open`).
+const HISTORY: OptionSpec = OptionSpec {
+    param: "history",
+    label: "FreeCAD history",
+    kind: OptionKind::Choice { choices: &[("features", "Rebuild its sketches and features"), ("solids", "Solids only")], default: 0 },
+};
+
+const FREECAD_IMPORT: &[OptionSpec] = &[UP_Z, STEP_NAMES, HISTORY];
 
 /// What an OpenUSD file brings: its meshes as mesh bodies (the default, as before the option), or
 /// its exact B-rep where it has one (see `file.insert_mesh` and [`crate::UsdGeometry`]).
@@ -262,6 +272,24 @@ pub static FORMATS: &[FormatSpec] = &[
         extensions: &["igs", "iges"],
         role: Role::Artifact,
         import: Some(ImportSpec { target: ImportTarget::Brep, options: BREP_IMPORT, native_only: false }),
+        export: Some(ExportSpec { command: "file.export", format: None, options: &[], scope: ExportScope::Bodies, lossless: false }),
+    },
+    FormatSpec {
+        id: "fcstd",
+        label: "FreeCAD",
+        extensions: &["fcstd"],
+        role: Role::Artifact,
+        import: Some(ImportSpec { target: ImportTarget::Brep, options: FREECAD_IMPORT, native_only: true }),
+        export: None,
+    },
+    FormatSpec {
+        id: "3dm",
+        label: "Rhino",
+        extensions: &["3dm"],
+        role: Role::Artifact,
+        import: Some(ImportSpec { target: ImportTarget::Brep, options: BREP_IMPORT, native_only: true }),
+        // Written by cadmpeg from the design (`file.export`); FreeCAD is not, as cadmpeg cannot
+        // write a new FreeCAD file yet.
         export: Some(ExportSpec { command: "file.export", format: None, options: &[], scope: ExportScope::Bodies, lossless: false }),
     },
     FormatSpec {
@@ -540,7 +568,7 @@ pub fn import_filters(native: bool) -> Vec<(&'static str, Vec<&'static str>)> {
         let Some(import) = f.import.as_ref() else { continue };
         match import.target {
             ImportTarget::Design => add("SolidCraft design (container or JSON)", f.extensions),
-            ImportTarget::Brep if import.native_only => add("Vendor CAD (Inventor, SolidWorks, CATIA V5)", f.extensions),
+            ImportTarget::Brep if import.native_only => add("FreeCAD and Rhino", f.extensions),
             ImportTarget::Brep => add(f.label, f.extensions),
             ImportTarget::Kicad => add(f.label, f.extensions),
             // An OpenUSD scene is read as meshes, but it is its own kind of file to most people.
@@ -600,7 +628,8 @@ mod tests {
             assert!(crate::is_step_path(&format!("part.{e}")), "is_step_path misses .{e}");
         }
         for e in [
-            "step", "stp", "igs", "iges", "ipt", "iam", "sldprt", "sldasm", "catpart",
+            "step", "stp", "igs", "iges", "fcstd", "3dm",
+            "ipt", "iam", "sldprt", "sldasm", "catpart",
         ] {
             assert!(with_target(ImportTarget::Brep).contains(&e), "registry misses B-rep .{e}");
         }
@@ -661,8 +690,9 @@ mod tests {
             assert_eq!(writes(e), vec!["usd"]);
         }
         assert!(writes("gltf").is_empty(), "a .gltf file is never written");
-        assert!(for_path("a.3DM").is_none());
-        assert!(for_path("a.FCStd").is_none());
+        assert_eq!(writes("3dm"), vec!["3dm"]);
+        assert_eq!(for_path("a.3DM").map(|f| f.id), Some("3dm"));
+        assert!(writes("fcstd").is_empty(), "cadmpeg cannot write a new FreeCAD file yet");
         assert!(for_path("a.png").is_none());
         assert!(for_path("nodot").is_none());
     }
@@ -703,14 +733,11 @@ mod tests {
     /// stays for a host that cannot build it.
     #[test]
     fn a_host_without_cadmpeg_leaves_its_rows_out() {
-        assert!(importable(true).any(|f| f.id == "inventor"));
-        assert!(importable(true).any(|f| f.id == "solidworks"));
-        assert!(importable(true).any(|f| f.id == "catia-v5"));
-        assert!(open_extensions(true).contains(&"ipt"));
-        assert!(open_extensions(true).contains(&"sldasm"));
-        assert!(open_extensions(true).contains(&"catpart"));
-        assert!(importable(false).all(|f| !f.import.as_ref().is_some_and(|i| i.native_only)));
-        assert!(!open_extensions(false).contains(&"ipt"));
+        assert!(importable(true).any(|f| f.id == "fcstd"));
+        assert!(open_extensions(true).contains(&"fcstd"));
+        assert!(open_extensions(true).contains(&"3dm"));
+        assert!(importable(false).all(|f| f.id != "fcstd" && f.id != "3dm"));
+        assert!(!open_extensions(false).contains(&"fcstd"));
         assert!(open_extensions(false).contains(&"igs"));
     }
 
@@ -722,12 +749,12 @@ mod tests {
         assert_eq!(find("SolidCraft design (container or JSON)"), vec!["sc", "solidcraft", "json"]);
         assert_eq!(find("STEP"), vec!["step", "stp"]);
         assert_eq!(find("IGES"), vec!["igs", "iges"]);
-        assert_eq!(find("Vendor CAD (Inventor, SolidWorks, CATIA V5)"), vec!["ipt", "iam", "sldprt", "sldasm", "catpart"]);
+        assert_eq!(find("FreeCAD and Rhino"), vec!["fcstd", "3dm"]);
         assert_eq!(find("Mesh (3MF, STL, OBJ, glTF)"), vec!["stl", "3mf", "obj", "glb", "gltf"]);
         assert_eq!(find("OpenUSD"), vec!["usd", "usda", "usdc", "usdz"]);
         assert_eq!(find("Point cloud (PLY, PCD, E57, XYZ, PTS, ASC)"), vec!["ply", "pcd", "e57", "xyz", "pts", "asc"]);
         assert_eq!(find("Sketch drawings (DXF, SVG)"), vec!["dxf", "svg"]);
-        assert!(import_filters(false).iter().all(|(l, _)| *l != "Vendor CAD (Inventor, SolidWorks, CATIA V5)"));
+        assert!(import_filters(false).iter().all(|(l, _)| *l != "FreeCAD and Rhino"));
     }
 
     /// `doc.open` opens a DXF or SVG drawing as a sketch (#4635), so the Open lists offer them
@@ -745,7 +772,7 @@ mod tests {
     #[test]
     fn import_extensions_are_the_foreign_cad_mesh_and_scan_files() {
         let import = import_extensions(true);
-        for e in ["step", "igs", "ipt", "iam", "sldprt", "sldasm", "catpart", "kicad_pcb", "stl", "usdz", "ply"] {
+        for e in ["step", "igs", "fcstd", "3dm", "kicad_pcb", "stl", "usdz", "ply"] {
             assert!(import.contains(&e), "{e} missing from {import:?}");
         }
         for e in ["sc", "solidcraft", "json", "dxf", "svg"] {
