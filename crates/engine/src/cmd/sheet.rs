@@ -100,6 +100,7 @@ pub static COMMANDS: &[CommandSpec] = &[
         "diameter, pitch: expr; margin?: expr (clear of edges, cut-outs, bends and the outline; default: the diameter); pattern?: staggered (60°, default) | square; body?; sketch? + profiles? (the outline: closed profiles of a sketch on a face of the sheet; holes only inside them, out of their inner loops) - a perforation field over the whole flat sheet or inside the outline: holes in the flat pattern (perforations), the DXF (layer PERFORATION) and the measured volume, not cut into the B-rep (#732)",
     ),
     CommandSpec::new("sheet.bead", "Bead", crate::checked!("sheet.bead", bead)).begins_edit()
+        .at("SHEET METAL", "CREATE")
         .icon("rib")
         .contract(&BEAD_CONTRACT)
         .output(output_schema_for::<FeatureResult>)

@@ -111,6 +111,18 @@ crate::dialog_descriptor::dialog_descriptors! {
         Tab("sheet.tab", "ui.sheet_tab_title", [("Profile", PROFILES, true)],
             FeatureKind::SheetTab { .. }) {
         } => json!({});
+        Bead("sheet.bead", "BEAD", [("Centrelines", CURVES, true)],
+            FeatureKind::SheetBead { depth, width, angle, crown_width, base_radius, crown_radius, end_length, margin, flip, .. }) {
+            depth: String = "2 mm".into() => depth.to_string(),
+            width: String = "10 mm".into() => width.to_string(),
+            angle: String = String::new() => angle.as_deref().map(str::to_string).unwrap_or_default(),
+            crown_width: String = String::new() => crown_width.as_deref().map(str::to_string).unwrap_or_default(),
+            base_radius: String = String::new() => base_radius.as_deref().map(str::to_string).unwrap_or_default(),
+            crown_radius: String = String::new() => crown_radius.as_deref().map(str::to_string).unwrap_or_default(),
+            end_length: String = String::new() => end_length.as_deref().map(str::to_string).unwrap_or_default(),
+            margin: String = String::new() => margin.as_deref().map(str::to_string).unwrap_or_default(),
+            flip: bool = false => *flip,
+        } => json!({"depth": depth, "width": width, "flip": flip});
         ; custom {
             /// Base, edge or contour flange (`ty` follows the picks: profiles, edges, sketch lines).
             Flange {
@@ -569,6 +581,17 @@ pub fn rows(app: &mut SolveApp, ui: &mut egui::Ui, k: &mut Sm, inputs: &mut [Sel
             form_row(ui, "Thickness", |ui| {
                 ui.label(solidcraft_ui_text::tr_label("from the rule"));
             });
+        }
+        Sm::Bead { depth, width, angle, crown_width, base_radius, crown_radius, end_length, margin, flip } => {
+            enter |= expr_row(ui, "Depth", depth);
+            enter |= expr_row(ui, "Width", width);
+            enter |= hint_row(ui, "Flank Angle", angle, "45 deg; clear this when using Crown Width");
+            enter |= hint_row(ui, "Crown Width", crown_width, "Alternative to Flank Angle");
+            enter |= hint_row(ui, "Base Radius", base_radius, solidcraft_ui_text::tr_label("from the rule"));
+            enter |= hint_row(ui, "Crown Radius", crown_radius, solidcraft_ui_text::tr_label("from the rule"));
+            enter |= hint_row(ui, "End Ramp Length", end_length, "default: 3 × depth");
+            enter |= hint_row(ui, "Edge / Bend Margin", margin, "default: 3 × thickness");
+            crate::ui_kit::options(ui, "sheet_options", &mut [("Flip", flip)]);
         }
         Sm::Unfold { .. } => {}
         Sm::Convert { rule, side, thin } => {
@@ -1133,6 +1156,27 @@ pub fn commands(app: &SolveApp, k: &Sm, inputs: &[SelInput], extra: &Map<String,
             put(&mut p, &[("radius", radius)]);
             ("sheet.path_flange", p)
         }
+        Sm::Bead { depth, width, angle, crown_width, base_radius, crown_radius, end_length, margin, flip } => {
+            if !angle.trim().is_empty() && !crown_width.trim().is_empty() {
+                return Err("set Flank Angle or Crown Width, not both".into());
+            }
+            let picks = items(inputs, 0);
+            let curves = picks.curve_ids();
+            if curves.is_empty() {
+                return Err("select one or more straight sketch centrelines first".into());
+            }
+            let sketch = crate::dialogs::picks_sketch(app, picks, None).ok_or("the bead centrelines' sketch is gone")?;
+            let mut p = json!({"sketch": sketch, "curves": curves, "depth": depth, "width": width, "flip": flip});
+            put(&mut p, &[
+                ("angle", angle),
+                ("crown_width", crown_width),
+                ("base_radius", base_radius),
+                ("crown_radius", crown_radius),
+                ("end_length", end_length),
+                ("margin", margin),
+            ]);
+            ("sheet.bead", p)
+        }
         Sm::Tab {} => {
             let ps: Vec<(u64, usize)> = items(inputs, 0).profiles();
             match ps.first().map(|x| x.0) {
@@ -1396,6 +1440,17 @@ pub fn for_feature(app: &SolveApp, kind: &FeatureKind) -> Option<(Kind, Vec<SelI
             }
             return Some((Kind::Sheet(k), ins, extra));
         }
+        FeatureKind::SheetBead { sketch, curves, body, .. } => {
+            if let Some(b) = body {
+                extra.insert("body".into(), json!(b));
+            }
+            let k = Sm::simple_restore(kind)?;
+            let (_, mut ins) = start(app, "sheet.bead")?;
+            if let Some(i) = ins.first_mut() {
+                i.items = curves.iter().map(|id| crate::selection::curve_pick(id, sketch.0, app.session.active_sketch)).collect();
+            }
+            return Some((Kind::Sheet(k), ins, extra));
+        }
         FeatureKind::SheetTab { sketch, profiles, body } => {
             if let Some(b) = body {
                 extra.insert("body".into(), json!(b));
@@ -1473,6 +1528,7 @@ pub fn for_feature(app: &SolveApp, kind: &FeatureKind) -> Option<(Kind, Vec<SelI
         Sm::Flange { .. } => "sheet.flange",
         Sm::Hem { .. } => "sheet.hem",
         Sm::Perforate { .. } => "sheet.perforate",
+        Sm::Bead { .. } => "sheet.bead",
         Sm::Unfold { refold: false } => "sheet.unfold",
         Sm::Unfold { .. } => "sheet.refold",
         _ => "sheet.convert",
