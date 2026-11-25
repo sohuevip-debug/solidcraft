@@ -9031,6 +9031,10 @@ fn a_fillet_on_a_sheet_corner_is_an_arc_of_its_outline_kept_by_a_later_flange() 
     // 2 (100 + 60) less the corner's two 10s, plus its quarter circle.
     let (lines, arcs, length) = outline(&mut s);
     assert!(lines == 4 && arcs == 1 && (length - (300.0 + 5.0 * PI)).abs() < 1e-6, "{lines} lines, {arcs} arcs, {length} long");
+    let flat_result = flat(&mut s);
+    let exact_outer = flat_result["outline_shapes"][0]["segments"].as_array().unwrap();
+    assert_eq!(exact_outer.len(), 5, "four straight edges and one exact rounded corner");
+    assert!(exact_outer.iter().any(|segment| segment.get("arc").is_some()), "the rounded outer edge remains an exact arc");
     // The plate less the corner's 10 x 10 square, but for its quarter circle, through 2.5.
     let want = (100.0 * 60.0 - (100.0 - 25.0 * PI)) * 2.5;
     assert!(rel(volume(&mut s), want) < 1e-9, "{} vs {want}", volume(&mut s));
