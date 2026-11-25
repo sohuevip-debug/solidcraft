@@ -627,7 +627,10 @@ mod tests {
         for e in with_target(ImportTarget::Brep) {
             assert!(crate::is_step_path(&format!("part.{e}")), "is_step_path misses .{e}");
         }
-        for e in ["step", "stp", "igs", "iges", "fcstd", "3dm"] {
+        for e in [
+            "step", "stp", "igs", "iges", "fcstd", "3dm",
+            "ipt", "iam", "sldprt", "sldasm", "catpart",
+        ] {
             assert!(with_target(ImportTarget::Brep).contains(&e), "registry misses B-rep .{e}");
         }
         for e in with_target(ImportTarget::Kicad) {
