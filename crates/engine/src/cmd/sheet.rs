@@ -217,7 +217,7 @@ pub static COMMANDS: &[CommandSpec] = &[
         .contract(&FLAT_PATTERN_CONTRACT)
         .output(output_schema_for::<FlatPatternResult>)
         .params(
-            "body? → flat size, outline loops and cut-outs (flat coordinates, as point lists), cutout_shapes (the same cut-outs exactly, in the same order: {circle: {center, radius}} for a round hole, else {segments: [{line: [a, b]} | {arc: {center, radius, start_deg, sweep_deg}} | {polyline: [...]}]}), pockets (with their own cutout_shapes), bend lines and the bend table",
+            "body? → flat size, outline loops and cut-outs (flat coordinates, as point lists), outline_shapes and cutout_shapes (the same outer contours and cut-outs exactly, in the same order: {circle: {center, radius}} or {segments: [{line: [a, b]} | {arc: {center, radius, start_deg, sweep_deg}} | {polyline: [...]}]}), pockets (with their own cutout_shapes), bend lines and the bend table",
         ),
     CommandSpec::new("sheet.export_dxf", "Export Flat Pattern as DXF", crate::checked!("sheet.export_dxf", export_dxf)).icon("dxf")
         .noundo()
