@@ -2234,3 +2234,44 @@ fn a_dragged_segment_round_trip_keeps_every_other_edge_byte_identical() {
     );
     assert_eq!(segment_rows(&h)[1], before[1], "edge 2 still comes back as it was");
 }
+
+
+/// Bead is a first-class Sheet Metal command: its sketch-centreline pick and parameters survive
+/// both creation and Edit Feature, in either ribbon layout.
+#[test]
+fn bead_dialog_creates_and_restores_its_sketch_centrelines() {
+    for mode in [crate::ui_kit::LayoutMode::Floating, crate::ui_kit::LayoutMode::Docked] {
+        let mut app = plate(mode);
+        app.run("sheet.flange", json!({"sketch": "Base"})).unwrap();
+        app.run("sketch.create", json!({"plane": "XY", "offset": 1.0, "name": "Beads"})).unwrap();
+        app.run("sketch.line", json!({"points": [[50, 10], [50, 50]], "ids": ["c1"]})).unwrap();
+        app.run("sketch.finish", json!({})).unwrap();
+        let sketch = app.session.doc.features.last().unwrap().id;
+        app.session.selection = vec![Sel::SketchCurve { id: "c1".into(), sketch: Some(sketch) }];
+
+        app.start("sheet.bead");
+        let dialog = app.dialog.clone().unwrap();
+        assert!(matches!(&dialog.kind, Kind::Sheet(Sm::Bead { .. })));
+        let commands = apply_commands(&app, &dialog).unwrap();
+        assert_eq!(commands[0].0, "sheet.bead");
+        assert_eq!(commands[0].1["sketch"], json!(sketch));
+        assert_eq!(commands[0].1["curves"], json!(["c1"]));
+        assert_eq!(commands[0].1["depth"], "2 mm");
+        assert_eq!(commands[0].1["width"], "10 mm");
+        run_all(&mut app, commands);
+
+        let feature = app.session.doc.features.last().unwrap().clone();
+        let edit = edit_dialog(&app, feature.id, None).unwrap();
+        assert!(matches!(&edit.kind, Kind::Sheet(Sm::Bead { .. })));
+        assert_eq!(edit.inputs[0].items.len(), 1);
+        assert!(matches!(
+            edit.inputs[0].items.as_slice(),
+            [Sel::SketchCurve { id, sketch: Some(id_sketch) }] if id == "c1" && *id_sketch == sketch
+        ));
+        let rebuilt = apply_commands(&app, &edit).unwrap();
+        assert_eq!(rebuilt[0].0, "timeline.redefine");
+        assert_eq!(rebuilt[0].1["params"]["curves"], json!(["c1"]));
+        assert_eq!(rebuilt[0].1["params"]["depth"], "2 mm");
+        assert_eq!(rebuilt[0].1["params"]["width"], "10 mm");
+    }
+}
