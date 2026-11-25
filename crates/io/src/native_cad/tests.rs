@@ -70,8 +70,14 @@ fn imports_the_block(bytes: &[u8], file: &str) {
 
 #[test]
 fn extensions() {
-    assert!(is_native_cad_path("a/Part.FCStd") && is_native_cad_path("x.3DM") && is_native_cad_path("y.fcstd"));
-    for other in ["c.sat", "c.sab", "c.smt", "c.smb", "c.f3d", "c.sldprt", "c.step", "fcstd"] {
+    for native in [
+        "a/Part.FCStd", "x.3DM", "y.fcstd", "part.ipt", "assembly.iam",
+        "part.sldprt", "assembly.sldasm", "part.CATPart",
+    ] {
+        assert!(is_native_cad_path(native), "{native}");
+        assert!(crate::is_step_path(native), "{native}: native CAD is opened as an Import feature");
+    }
+    for other in ["c.sat", "c.sab", "c.smt", "c.smb", "c.f3d", "c.step", "c.CATProduct", "fcstd"] {
         assert!(!is_native_cad_path(other), "{other}");
     }
     assert!(crate::is_step_path("c.FCStd") && crate::is_step_path("c.3dm"), "read as an Import feature like STEP and IGES");
