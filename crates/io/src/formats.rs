@@ -49,7 +49,7 @@ pub struct ImportSpec {
     /// Options offered at import time; each `param` is a parameter of `doc.open` and of the
     /// matching `file.insert_*` command.
     pub options: &'static [OptionSpec],
-    /// Read through cadmpeg (FreeCAD `.FCStd`, Rhino `.3dm`). Every current host builds it;
+    /// Read through cadmpeg (FreeCAD, Rhino, Inventor, SolidWorks, CATIA). Every current host builds it;
     /// `native = false` leaves these rows out for a host that cannot.
     pub native_only: bool,
 }
@@ -291,6 +291,30 @@ pub static FORMATS: &[FormatSpec] = &[
         // Written by cadmpeg from the design (`file.export`); FreeCAD is not, as cadmpeg cannot
         // write a new FreeCAD file yet.
         export: Some(ExportSpec { command: "file.export", format: None, options: &[], scope: ExportScope::Bodies, lossless: false }),
+    },
+    FormatSpec {
+        id: "inventor",
+        label: "Autodesk Inventor",
+        extensions: &["ipt", "iam"],
+        role: Role::Artifact,
+        import: Some(ImportSpec { target: ImportTarget::Brep, options: BREP_IMPORT, native_only: true }),
+        export: None,
+    },
+    FormatSpec {
+        id: "solidworks",
+        label: "SolidWorks",
+        extensions: &["sldprt", "sldasm"],
+        role: Role::Artifact,
+        import: Some(ImportSpec { target: ImportTarget::Brep, options: BREP_IMPORT, native_only: true }),
+        export: None,
+    },
+    FormatSpec {
+        id: "catia-v5",
+        label: "CATIA V5",
+        extensions: &["catpart"],
+        role: Role::Artifact,
+        import: Some(ImportSpec { target: ImportTarget::Brep, options: BREP_IMPORT, native_only: true }),
+        export: None,
     },
     FormatSpec {
         id: "kicad",
