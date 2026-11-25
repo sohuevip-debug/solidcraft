@@ -1318,6 +1318,9 @@ fn surface_flat_json(sk: &solidcraft_doc::SurfaceSheet) -> Value {
     let size = loops.iter().fold(Aabb2::EMPTY, |b, l| b.union(&l.bounds())).size();
     let pt = |v: &Vec2| json!([v.x, v.y]);
     let outline: Vec<Value> = loops.iter().map(|l| Value::Array(l.iter().map(pt).collect())).collect();
+    // Keep the exact outer-loop segment descriptions alongside the tessellation used by
+    // nesting. CAM consumers can then transform the source curves without reconstructing them.
+    let outline_shapes: Vec<FlatShape> = sk.regions.iter().map(|r| loop_shape(&r.outer)).collect();
     let holes: Vec<Value> = sk.regions.iter().flat_map(|r| &r.holes).map(|h| Value::Array(h.polyline(1e-3).iter().map(pt).collect())).collect();
     let hole_shapes: Vec<FlatShape> = sk.regions.iter().flat_map(|r| &r.holes).map(loop_shape).collect();
     let bends: Vec<Value> = sk
@@ -1361,7 +1364,7 @@ fn surface_flat_json(sk: &solidcraft_doc::SurfaceSheet) -> Value {
         .map(|r| json!({"roll": r.index, "panel": r.panel, "radius": r.radius, "angle_deg": r.angle_deg, "length": r.length, "width": r.width}))
         .collect();
     let mut out = json!({"body": sk.body, "rule": sk.rule, "thickness": sk.thickness, "k_factor": sk.k_factor, "flat_size_mm": [size.x, size.y, sk.thickness],
-        "outline": outline, "cutouts": holes, "cutout_shapes": hole_shapes, "pockets": pockets, "bends": bends, "roll_lines": roll_lines, "roll_table": roll_table, "unfolded": sk.unfolded,
+        "outline": outline, "outline_shapes": outline_shapes, "cutouts": holes, "cutout_shapes": hole_shapes, "pockets": pockets, "bends": bends, "roll_lines": roll_lines, "roll_table": roll_table, "unfolded": sk.unfolded,
         "perforations": perforations, "bend_zones": bend_zones, "rolls": sk.rolls});
     if !bores.is_empty() {
         out["bores"] = Value::Array(bores);
