@@ -1535,6 +1535,9 @@ pub struct FlatPatternResult {
     pub flat_size_mm: [f64; 3],
     /// The outer contours, one per piece, as points within 0.001 mm.
     pub outline: Vec<Vec<FlatPoint>>,
+    /// The same outer contours exactly, in the same order (circle or line/arc/polyline segments).
+    /// Polyline segments are tessellated within 0.001 mm, like the compatibility point lists.
+    pub outline_shapes: Vec<FlatShape>,
     /// The cut-outs through the sheet, as points within 0.001 mm.
     pub cutouts: Vec<Vec<FlatPoint>>,
     /// The same cut-outs exactly, in the same order.
