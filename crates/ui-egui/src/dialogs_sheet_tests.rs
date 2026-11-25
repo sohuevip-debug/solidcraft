@@ -2243,7 +2243,7 @@ fn bead_dialog_creates_and_restores_its_sketch_centrelines() {
     for mode in [crate::ui_kit::LayoutMode::Floating, crate::ui_kit::LayoutMode::Docked] {
         let mut app = plate(mode);
         app.run("sheet.flange", json!({"sketch": "Base"})).unwrap();
-        app.run("sketch.create", json!({"plane": "XY", "offset": 1.0, "name": "Beads"})).unwrap();
+        app.run("sketch.create", json!({"plane": "XY", "offset": 2.5, "name": "Beads"})).unwrap();
         app.run("sketch.line", json!({"points": [[50, 10], [50, 50]], "ids": ["c1"]})).unwrap();
         app.run("sketch.finish", json!({})).unwrap();
         let sketch = app.session.doc.features.last().unwrap().id;
