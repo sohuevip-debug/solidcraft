@@ -1162,7 +1162,7 @@ fn insert_step(s: &mut Session, p: &Value) -> Result<Value> {
     let cmd = "file.insert_step";
     let path = path_arg(p, cmd)?;
     if !solidcraft_io::is_step_path(path) {
-        return Err(bad(cmd, "only STEP, IGES, FreeCAD and Rhino files (.step, .stp, .igs, .iges, .fcstd, .3dm) can be inserted"));
+        return Err(bad(cmd, "only STEP, IGES, FreeCAD, Rhino, Inventor, SolidWorks and CATIA V5 files can be inserted"));
     }
     let mut options = step_options(p, cmd)?;
     // The translation column may be length expressions that name parameters (#8192): the
