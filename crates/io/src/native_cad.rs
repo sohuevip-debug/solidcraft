@@ -9,7 +9,7 @@
 //! CADIR assembly structure, placements and body names are retained by the record conversion path.
 
 /// File extensions read through cadmpeg (lower case).
-pub const NATIVE_CAD_EXTS: [&str; 8] = ["fcstd", "3dm", "ipt", "iam", "sldprt", "sldasm", "catpart", "catproduct"];
+pub const NATIVE_CAD_EXTS: [&str; 7] = ["fcstd", "3dm", "ipt", "iam", "sldprt", "sldasm", "catpart"];
 
 /// Is a supported native CAD file name (any case)?
 /// Is this a FreeCAD file name (any case)?
@@ -874,13 +874,13 @@ mod convert {
         let ext = name.rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase()).unwrap_or_default();
         if !super::NATIVE_CAD_EXTS.contains(&ext.as_str()) {
             return Err(format!(
-                "{name}: unsupported native CAD extension; supported: .FCStd, .3dm, .ipt, .iam, .sldprt, .sldasm, .CATPart, .CATProduct"
+                "{name}: unsupported native CAD extension; supported: .FCStd, .3dm, .ipt, .iam, .sldprt, .sldasm, .CATPart"
             ));
         }
         let codec = match ext.as_str() {
             "ipt" | "iam" => "inventor",
             "sldprt" | "sldasm" => "sldprt",
-            "catpart" | "catproduct" => "catia",
+            "catpart" => "catia",
             other => other,
         };
         records_of(name, &ext, bytes, &[codec])
