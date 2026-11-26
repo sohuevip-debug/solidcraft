@@ -118,6 +118,49 @@ fn a_bead_is_listed_in_the_flat_pattern_and_drawn_in_the_dxf() {
     assert!(dxf.contains("BEAD UP D2 W10"), "note");
 }
 
+/// One Bead feature with two separated sketch centrelines makes two complete forms in the
+/// same solid, and both forms survive the flat-pattern and DXF paths.
+#[test]
+fn one_bead_feature_builds_every_selected_centreline() {
+    let mut s = plate();
+    run(&mut s, "sketch.create", json!({"plane": "XY", "offset": T, "name": "TwinBeads"}));
+    run(&mut s, "sketch.line", json!({"points": [[30, 40], [30, 360]], "ids": ["c1"]}));
+    run(&mut s, "sketch.line", json!({"points": [[70, 40], [70, 360]], "ids": ["c2"]}));
+    run(&mut s, "sketch.finish", json!({}));
+    let created = run(
+        &mut s,
+        "sheet.bead",
+        json!({
+            "sketch": "TwinBeads",
+            "curves": ["c1", "c2"],
+            "depth": 2,
+            "width": 10,
+            "base_radius": 1,
+            "crown_radius": 1,
+            "end_length": 6
+        }),
+    );
+    assert_eq!(created["feature"].as_u64().is_some(), true, "{created}");
+
+    let (_, shells, faces, z0, z1) = measured(&s);
+    assert_eq!((shells, faces), (1, 6 + 2 * 26), "both beads must be sewn into one closed sheet solid");
+    assert!((z0 - 0.0).abs() < 1e-6 && (z1 - 3.0).abs() < 1e-6, "{z0} … {z1}");
+
+    let pattern = flat(&mut s);
+    let beads = pattern["beads"].as_array().cloned().unwrap_or_default();
+    assert_eq!(beads.len(), 2, "{pattern}");
+    let starts: Vec<f64> = beads.iter().map(|b| b["start"][0].as_f64().unwrap_or(f64::NAN)).collect();
+    assert!(starts.iter().any(|x| (*x - 30.0).abs() < 1e-6), "{beads}");
+    assert!(starts.iter().any(|x| (*x - 70.0).abs() < 1e-6), "{beads}");
+
+    let dxf = run(&mut s, "sheet.export_dxf", json!({"bend_notes": true}))["dxf"]
+        .as_str()
+        .unwrap_or_default()
+        .to_string();
+    assert!(dxf.contains("FORM_UP"), "{dxf}");
+    assert_eq!(dxf.matches("BEAD UP D2 W10").count(), 2, "{dxf}");
+}
+
 /// A bead whose footprint meets the sheet's edge or a bend, one wholly inside another bead's
 /// footprint, and one not on the sheet's faces, are refused, each with its reason; one on a sheet
 /// drawn from a sketch (a base flange) is pressed as on a converted one.
