@@ -2276,6 +2276,38 @@ fn bead_dialog_creates_and_restores_its_sketch_centrelines() {
     }
 }
 
+/// One Bead feature can carry several independently selected sketch centrelines, and Edit Feature
+/// restores the complete set rather than silently keeping only the first curve.
+#[test]
+fn bead_dialog_keeps_all_selected_centrelines() {
+    for mode in [crate::ui_kit::LayoutMode::Floating, crate::ui_kit::LayoutMode::Docked] {
+        let mut app = plate(mode);
+        app.run("sheet.flange", json!({"sketch": "Base"})).unwrap();
+        app.run("sketch.create", json!({"plane": "XY", "offset": 2.5, "name": "Beads"})).unwrap();
+        app.run("sketch.line", json!({"points": [[30, 10], [30, 50]], "ids": ["c1"]})).unwrap();
+        app.run("sketch.line", json!({"points": [[70, 10], [70, 50]], "ids": ["c2"]})).unwrap();
+        app.run("sketch.finish", json!({})).unwrap();
+        let sketch = app.session.doc.features.last().unwrap().id;
+        app.session.selection = vec![
+            Sel::SketchCurve { id: "c1".into(), sketch: Some(sketch) },
+            Sel::SketchCurve { id: "c2".into(), sketch: Some(sketch) },
+        ];
+
+        app.start("sheet.bead");
+        let dialog = app.dialog.clone().unwrap();
+        let commands = apply_commands(&app, &dialog).unwrap();
+        assert_eq!(commands[0].1["curves"], json!(["c1", "c2"]));
+        run_all(&mut app, commands);
+
+        let feature = app.session.doc.features.last().unwrap().clone();
+        let edit = edit_dialog(&app, feature.id, None).unwrap();
+        assert_eq!(edit.inputs[0].items.len(), 2);
+        let rebuilt = apply_commands(&app, &edit).unwrap();
+        assert_eq!(rebuilt[0].0, "timeline.redefine");
+        assert_eq!(rebuilt[0].1["params"]["curves"], json!(["c1", "c2"]));
+    }
+}
+
 /// Every optional bead-forming parameter survives creation and Edit Feature. This guards the
 /// alternate crown-width definition as well as the rule-derived radii and end/margin overrides.
 #[test]
