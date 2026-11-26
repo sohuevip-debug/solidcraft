@@ -811,6 +811,10 @@ fn bead(s: &mut Session, p: &Value) -> Result<Value> {
     if curves.is_empty() || curves.len() > solidcraft_doc::MAX_BEADS {
         return Err(bad(cmd, format!("`curves` must list the beads' centrelines (1…{})", solidcraft_doc::MAX_BEADS)));
     }
+    let mut seen = std::collections::HashSet::with_capacity(curves.len());
+    if curves.iter().any(|curve| !seen.insert(curve)) {
+        return Err(bad(cmd, "`curves` must not list the same centreline more than once"));
+    }
     let shape = str_(p, "shape").map(str::to_string);
     if !matches!(shape.as_deref(), None | Some("trapezoid")) {
         return Err(bad(cmd, "`shape` is \"trapezoid\" (the only cross-section so far)"));
