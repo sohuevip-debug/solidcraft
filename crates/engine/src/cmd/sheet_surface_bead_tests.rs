@@ -220,6 +220,14 @@ fn beads_that_cannot_be_pressed_are_refused() {
     line(&mut w, "Inside", T, [50.0, 100.0], [50.0, 300.0]);
     let e = w.execute("sheet.bead", &json!({"sketch": "Inside", "curves": ["c1"], "depth": 2, "width": 10})).unwrap_err().to_string();
     assert!(e.contains("meets another bead"), "{e}");
+    // A crossing centreline also overlaps the first bead, without either footprint containing the other.
+    line(&mut w, "Crossing", T, [20.0, 200.0], [80.0, 200.0]);
+    let e = w.execute("sheet.bead", &json!({"sketch": "Crossing", "curves": ["c1"], "depth": 2, "width": 10})).unwrap_err().to_string();
+    assert!(e.contains("meets another bead"), "{e}");
+    // Rejection is atomic: the original bead remains the only form in the solid and flat pattern.
+    let (_, shells, faces, ..) = measured(&w);
+    assert_eq!((shells, faces), (1, 6 + 26));
+    assert_eq!(flat(&mut w)["beads"].as_array().map_or(0, Vec::len), 1);
     // A bead wholly inside a pocket (a recess 0.3 into the surface), clear of its edges.
     let mut p = plate();
     run(&mut p, "sketch.create", json!({"plane": "XY", "offset": T, "name": "Pocket"}));
