@@ -2275,3 +2275,46 @@ fn bead_dialog_creates_and_restores_its_sketch_centrelines() {
         assert_eq!(rebuilt[0].1["params"]["width"], "10 mm");
     }
 }
+
+/// Every optional bead-forming parameter survives creation and Edit Feature. This guards the
+/// alternate crown-width definition as well as the rule-derived radii and end/margin overrides.
+#[test]
+fn bead_dialog_round_trips_all_forming_parameters() {
+    for mode in [crate::ui_kit::LayoutMode::Floating, crate::ui_kit::LayoutMode::Docked] {
+        let mut app = plate(mode);
+        app.run("sheet.flange", json!({"sketch": "Base"})).unwrap();
+        app.run("sketch.create", json!({"plane": "XY", "offset": 2.5, "name": "Beads"})).unwrap();
+        app.run("sketch.line", json!({"points": [[50, 10], [50, 50]], "ids": ["c1"]})).unwrap();
+        app.run("sketch.finish", json!({})).unwrap();
+        let sketch = app.session.doc.features.last().unwrap().id;
+
+        let authored = json!({
+            "sketch": sketch,
+            "curves": ["c1"],
+            "depth": "2.5 mm",
+            "width": "12 mm",
+            "crown_width": "4 mm",
+            "base_radius": "1.2 mm",
+            "crown_radius": "0.6 mm",
+            "end_length": "8 mm",
+            "margin": "9 mm",
+            "flip": true
+        });
+        app.run("sheet.bead", authored.clone()).unwrap();
+
+        let feature = app.session.doc.features.last().unwrap().clone();
+        let edit = edit_dialog(&app, feature.id, None).unwrap();
+        assert!(matches!(&edit.kind, Kind::Sheet(Sm::Bead { .. })));
+        let rebuilt = apply_commands(&app, &edit).unwrap();
+        assert_eq!(rebuilt[0].0, "timeline.redefine");
+        for key in ["depth", "width", "crown_width", "base_radius", "crown_radius", "end_length", "margin", "flip"] {
+            assert_eq!(
+                rebuilt[0].1["params"][key],
+                authored[key],
+                "bead parameter {key} changed during Edit Feature: {}",
+                rebuilt[0].1["params"]
+            );
+        }
+        assert!(rebuilt[0].1["params"].get("angle").is_none(), "crown width and flank angle are alternatives");
+    }
+}
