@@ -161,6 +161,28 @@ fn one_bead_feature_builds_every_selected_centreline() {
     assert_eq!(dxf.matches("BEAD UP D2 W10").count(), 2, "{dxf}");
 }
 
+/// Repeating a centreline must be refused rather than creating coincident, self-overlapping beads.
+#[test]
+fn a_bead_feature_refuses_duplicate_centrelines() {
+    let mut s = plate();
+    line(&mut s, "Beads", T, [50.0, 40.0], [50.0, 360.0]);
+    let error = s.execute(
+        "sheet.bead",
+        &json!({
+            "sketch": "Beads",
+            "curves": ["c1", "c1"],
+            "depth": 2,
+            "width": 10
+        }),
+    ).unwrap_err().to_string();
+    assert!(error.contains("same centreline more than once"), "{error}");
+    // The same sketch remains usable when its centreline is listed once.
+    let created = bead(&mut s, "Beads", false);
+    assert!(created["feature"].as_u64().is_some(), "{created}");
+    let (_, shells, faces, ..) = measured(&s);
+    assert_eq!((shells, faces), (1, 6 + 26));
+}
+
 /// A bead whose footprint meets the sheet's edge or a bend, one wholly inside another bead's
 /// footprint, and one not on the sheet's faces, are refused, each with its reason; one on a sheet
 /// drawn from a sketch (a base flange) is pressed as on a converted one.
